@@ -270,3 +270,11 @@ TODO
 ```shell
 ❯  git config core.autocrlf false
 ```
+
+## lfs 설치
+
+이미지 등의 바이너리 파일은 버전 추적이 안되도록 lfs 설정을 한다.
+
+```shell
+
+```
