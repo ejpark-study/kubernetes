@@ -25,6 +25,8 @@ aws cloudformation deploy --template-file doik.yaml --stack-name doik --paramete
 
 ## aws stack 삭제
 
+[stop-stack](stop-stack.ps1)
+
 ```shell
 # list stack
 aws cloudformation list-stacks
@@ -37,12 +39,10 @@ aws cloudformation delete-stack --stack-name doik
 
 * [aws console](https://ap-northeast-2.console.aws.amazon.com/cloudformation/home?region=ap-northeast-2)
 
-master node 의 ip 주소가 생성할때마다 달라져서 아래와 같은 [스크립트](master.ps1)를 작성하였다.
+master node 의 ip 주소가 생성할 때마다 달라져서 아래와 같은 접속 [스크립트](master.ps1)를 작성하였다.
 
 ```shell
 # check node ip
-aws cloudformation describe-stacks
-
 aws cloudformation describe-stacks | Select-String MasterNodeIP
 
 # ssh connect
@@ -52,7 +52,7 @@ ssh -i default.pem ubuntu@$node_ip
 
 # k9s install
 
-스터디에서는 kubeopsview 를 사용하는데 난 아직 k9s 가 익숙해서 설치해 줬다. 
+스터디에서는 kubeopsview 를 사용하는데, 난 아직 k9s 가 익숙해서 설치했다.
 
 ```shell
 wget "https://github.com/derailed/k9s/releases/download/v0.25.18/k9s_Linux_x86_64.tar.gz" -O /tmp/k9s_Linux_x86_64.tar.gz
@@ -60,20 +60,13 @@ tar xvfz /tmp/k9s_Linux_x86_64.tar.gz -C /tmp && mv /tmp/k9s /usr/bin/k9s
 rm -f /tmp/k9s_Linux_x86_64.tar.gz
 ```
 
-# start kubeopsview
-
-```shell
-kubectl apply -k DOIK/kubeopsview/
-
-KUBEOPSVIEW=$(curl -s ipinfo.io/ip):$(kubectl get svc -n kube-system kube-ops-view -o jsonpath="{.spec.ports[0].nodePort}")
-echo -e "Kube Ops View URL = http://$KUBEOPSVIEW"
-
-google-chrome "http://$KUBEOPSVIEW"
-```
-
 # minio docker
 
+minio 예전 버전중 하나에서 timezone 이슈가 있어 volumne 에 host timezone 을 넣어 준다. minio client 인 mc 에서 접근시 timezone 이 맞지 않다는 에러 메세지가 출력되면서 접속이 안되는 이슈가 있었다. 
+
 ```shell
+export MINIO_DATA=~/minio-data
+
 docker run \
   --detach --restart unless-stopped \
   --name minio \
@@ -81,16 +74,31 @@ docker run \
   --publish 80:80 \
   --publish 9000:9000 \
   --env "MINIO_ROOT_USER=minio" \
-  --env "MINIO_ROOT_PASSWORD=minio2022" \
-  --volume "${DATA_PATH}:/data:rw" \
+  --env "MINIO_ROOT_PASSWORD=minio1234" \
+  --volume "${MINIO_DATA}:/data:rw" \
   --volume /etc/timezone:/etc/timezone:ro \
   --volume /etc/localtime:/etc/localtime:ro \
-  registry.web.boeing.com/bketc-mlops/library/minio:RELEASE.2022-05-08T23-50-31Z \
+  quay.io/minio/minio:RELEASE.2022-05-08T23-50-31Z \
     server --address "0.0.0.0:9000" --console-address "0.0.0.0:80" /data
 ```
 
 # minio valina kuberentes
 
+minio 공식 문서에는 두가지 버전의 Helm이 있다. 그중 Operator 를 쓰지 않는 Helm 에서 아래 배포 스크립트를 추출하였다.
+
+## secret 을 위한 admin 암호 변환
+
+```shell
+❯ echo -n minio | base64
+bWluaW8=
+
+❯ echo -n minio1234 | base64
+bWluaW8xMjM0
+```
+
+## minio 배포 스크립트
+
+minio 는 client 에서 접근하는 9000번 포트와 웹 콘솔화면에 접근하는 9001번 포트가 있다. 여기서는 웹 콘솔 포트만 열었다. 
 
 ```shell
 cat <<EOF | kubectl apply -f -
@@ -104,8 +112,8 @@ metadata:
     app: minio
 type: Opaque
 data:
-  rootUser: "aGFuZHNvbg=="
-  rootPassword: "aGFuZHNvbjIwMjI="
+  rootUser: "bWluaW8="
+  rootPassword: "bWluaW8xMjM0"
 ---
 # Service
 apiVersion: v1
@@ -189,7 +197,33 @@ spec:
 EOF
 ```
 
+MetalLB 와 같은 Loadbalancer 가 있다면 위와 같이 하고 Ingress 로 접근하면 간편하지만, 난 아래와 같이 Service 에 ExternalIPs 를 설정해서 Service 로 접근하는 것을 (간편해서?) 선호한다. NodePort를 쓰는건 좀 꺼려져서 되도록이면 그 방식은 안쓰려고 한다.
+
+```shell
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-console
+  labels:
+    app: minio
+spec:
+  type: LoadBalancer
+  ExternalIPs:
+    - <MasterNodeIP or one of WorkerNodeIP>
+  ports:
+    - name: http
+      port: 9001
+      protocol: TCP
+      targetPort: 9001
+  selector:
+    app: minio
+```
+
 # minio helm
+
+
 
 # minio operator
 
