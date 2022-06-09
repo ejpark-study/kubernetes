@@ -2,7 +2,7 @@
 
 가시다님 최고의 스터디인 Kubernetes Advanced Networking Study (KANS)에 이어서 Database Operator 를 사용하는 방법에 관한 스터디에 참여하고 있다. 내가 궁금한 부분은 맨 마지막주에 있는 Elasticsearch Operator 인데, 듣다가 보니 도움이 많이 되었다. 특히 나 같은 경우에는 데이터를 저장해야 하는 서비스를 Kubernetes 에서 하기엔 쫄보라서 지금까지는 docker 로 Elasticsearch, Mysql, MongoDB 를 운영하였다. 이번 스터디에서 장애를 발생하고 복구하는 것을 보니 다음 프로젝트에는 Operator 를 사용해 보려고 한다. 
 
-듣고 싶은 Elasticsearch Operator 를 듣기 위해서는 중간과제를 제출해야 하는데, 최대한 업무와 관련있는 주제를 찾다가 오늘에서야 주제를 잡고 이렇게 작성한다. 내부에서는 MLOps Pipeline 개발에 Minio와 RebbitMQ 사용하고 있어서, 이번 중간 과제 주제로 Minio 를 기존 방식인 docker 방식에서 Minio Operator 를 사용하는 방식으로 변환하는 과정을 정리하고자 한다. 문제는 저번주 부터 테스트해보고 있는데, OpenShift 에서는 Minio 에서 공식 지원하는 Helm Operator 방식이 설치되지 않아 중간 과제 작성이 늦어졌다.
+듣고 싶은 Elasticsearch Operator 를 듣기 위해서는 중간과제를 제출해야 하는데, 최대한 업무와 관련있는 주제를 찾다가 오늘에서야 주제를 잡고 이렇게 작성한다. 내부에서는 MLOps Pipeline 개발에 MinIO, RebbitMQ 사용하고 있어서, 이번 중간 과제 주제로 MinIO 를 기존 방식인 docker 방식에서 MinIO Operator 를 사용하는 방식으로 변환하는 과정을 정리하고자 한다. 문제는 저번주 부터 테스트해보고 있는데, OpenShift 에서는 MinIO 에서 공식 지원하는 Helm Operator 방식이 설치되지 않아 중간 과제 작성이 늦어졌다.
 
 # Prepare AWS Stack
 
@@ -60,9 +60,15 @@ tar xvfz /tmp/k9s_Linux_x86_64.tar.gz -C /tmp && mv /tmp/k9s /usr/bin/k9s
 rm -f /tmp/k9s_Linux_x86_64.tar.gz
 ```
 
-# minio docker
+# MinIO Console
 
-minio 예전 버전중 하나에서 timezone 이슈가 있어 volumne 에 host timezone 을 넣어 준다. minio client 인 mc 에서 접근시 timezone 이 맞지 않다는 에러 메세지가 출력되면서 접속이 안되는 이슈가 있었다. 
+불과 6개월 전만 하더라도 이런 그래프는 없었는데, 엄청나게 변경됬다.
+
+![](https://github.com/minio/operator/raw/master/docs/images/console-dashboard.png)
+
+# MinIO with Docker
+
+MinIO 예전 버전중 하나에서 timezone 이슈가 있어 volumne 에 host timezone 을 넣어 준다. MinIO client 인 mc 에서 접근시 timezone 이 맞지 않다는 에러 메세지가 출력되면서 접속이 안되는 이슈가 있었다. 
 
 ```shell
 export MINIO_DATA=~/minio-data
@@ -82,9 +88,9 @@ docker run \
     server --address "0.0.0.0:9000" --console-address "0.0.0.0:80" /data
 ```
 
-# minio valina kuberentes
+# MinIO valina kuberentes
 
-minio 공식 문서에는 두가지 버전의 Helm이 있다. 그중 Operator 를 쓰지 않는 Helm 에서 아래 배포 스크립트를 추출하였다.
+MinIO 공식 문서에는 두가지 버전의 Helm이 있다. 그중 Operator 를 쓰지 않는 Helm 에서 아래 배포 스크립트를 추출하였다.
 
 ## secret 을 위한 admin 암호 변환
 
@@ -96,9 +102,9 @@ bWluaW8=
 bWluaW8xMjM0
 ```
 
-## minio 배포 스크립트
+## MinIO 배포 스크립트
 
-minio 는 client 에서 접근하는 9000번 포트와 웹 콘솔화면에 접근하는 9001번 포트가 있다. 여기서는 웹 콘솔 포트만 열었다. 
+MinIO 는 client 에서 접근하는 9000번 포트와 웹 콘솔화면에 접근하는 9001번 포트가 있다. 여기서는 웹 콘솔 포트만 열었다. 
 
 ```shell
 cat <<EOF | kubectl apply -f -
@@ -221,24 +227,45 @@ spec:
     app: minio
 ```
 
-# minio helm
+# MinIO Helm
+
+MinIO 에서는 아래와 같이 Operator 와 Helm Chart 방식이 존재한다.
+
+![](MinIO-Deploy-on-K8S.png)
+
+* [Deploy MinIO on Kubernetes](https://docs.min.io/docs/deploy-minio-on-kubernetes.html)
 
 
+TODO
 
-# minio operator
+# MinIO Operator
 
-# minio operator based helm 
+![](https://github.com/minio/operator/raw/master/docs/images/architecture.png)
 
+* [MinIO Operator](https://github.com/minio/operator/blob/master/README.md)
+
+```shell
+kubectl krew update
+kubectl krew install minio
+
+kubectl minio init
+```
+
+# MinIO Operator based Helm 
+
+TODO
 
 # RebbitMQ
 
 * [rabbitmq operator](https://www.rabbitmq.com/kubernetes/operator/operator-overview.html)
 
+TODO
+
 # issue 
 
 ## warning: LF will be replaced by CRLF in doik/doik.yaml.
 
-윈도우에서 git 작업하다가 보면 이런 메세지가 성가신다. 
+윈도우에서 git 작업하다가 보면 이런 메세지가 성가신다. 아래와 같이 autocrlf 를 false 설정한다.
 
 ```shell
 ❯  git config core.autocrlf false
