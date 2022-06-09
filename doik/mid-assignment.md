@@ -268,7 +268,7 @@ TODO
 윈도우에서 git 작업하다가 보면 이런 메세지가 성가신다. 아래와 같이 autocrlf 를 false 설정한다.
 
 ```shell
-❯  git config core.autocrlf false
+❯ git config core.autocrlf false
 ```
 
 ## lfs 설치
@@ -276,5 +276,6 @@ TODO
 이미지 등의 바이너리 파일은 버전 추적이 안되도록 lfs 설정을 한다.
 
 ```shell
-
+❯ git lfs install
+❯ git lfs track *.png
 ```
