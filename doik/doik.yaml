@@ -1,0 +1,518 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "<<<<< Kubernetes >>>>>"
+        Parameters:
+          - KubernetesVersion
+      - Label:
+          default: "<<<<< EC2 Node >>>>>"
+        Parameters:
+          - KeyName
+          - SgIngressCidr
+          - MasterNodeInstanceType
+          - WorkerNodeInstanceType
+          - Ec2EbsVolumeSize
+          - LatestAmiId
+      - Label:
+          default: "<<<<< Region AZ >>>>>"
+        Parameters:
+          - TargetRegion
+          - AvailabilityZone1
+          - AvailabilityZone2
+      - Label:
+          default: "<<<<< VPC Subnet >>>>>"
+        Parameters:
+          - VpcBlock
+          - PublicSubnet1Block
+          - PublicSubnet2Block
+          - PrivateSubnet1Block
+          - PrivateSubnet2Block
+
+Parameters:
+  KubernetesVersion:
+    Description: Enter 1.23.5, 1.23.6, 1.23.7. Default is 1.23.6
+    Type: String
+    Default: 1.23.6
+    AllowedValues: 
+      - 1.23.5
+      - 1.23.6
+      - 1.23.7
+      - 1.24.0
+      - 1.24.1
+
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instances. Linked to AWS Parameter
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+
+  SgIngressCidr:
+    Description: The IP address range that can be used to communicate to the EC2 instances
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 0.0.0.0/0
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+
+  MasterNodeInstanceType:
+    Description: Enter t2.micro, t2.small, t2.medium, t3.micro, t3.small, t3.medium, t3.large, t3.xlarge. Default is t3.medium.
+    Type: String
+    Default: t3.medium
+    AllowedValues: 
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t3.large
+      - t3.xlarge
+
+  WorkerNodeInstanceType:
+    Description: Enter t2.micro, t2.small, t2.medium, t3.micro, t3.small, t3.medium, t3.large, t3.xlarge. Default is t3.medium.
+    Type: String
+    Default: t3.medium
+    AllowedValues: 
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t3.large
+      - t3.xlarge
+  
+  Ec2EbsVolumeSize:
+    Description: EC2 EBS gp3 Volume Size (GiB)
+    Type: String
+    Default: 50
+
+  LatestAmiId:
+    Description: Ubuntu 22.04 LTS - (DO NOT CHANGE)
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id'
+    AllowedValues:
+      - /aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id
+
+  TargetRegion:
+    Type: String
+    Default: ap-northeast-2
+
+  AvailabilityZone1:
+    Type: String
+    Default: ap-northeast-2a
+
+  AvailabilityZone2:
+    Type: String
+    Default: ap-northeast-2c
+
+  VpcBlock:
+    Type: String
+    Default: 192.168.0.0/16
+    Description: (DO NOT CHANGE)
+
+  PublicSubnet1Block:
+    Type: String
+    Default: 192.168.10.0/24
+    Description: (DO NOT CHANGE)
+
+  PublicSubnet2Block:
+    Type: String
+    Default: 192.168.20.0/24
+    Description: (DO NOT CHANGE)
+
+  PrivateSubnet1Block:
+    Type: String
+    Default: 192.168.30.0/24
+    Description: (DO NOT CHANGE)
+
+  PrivateSubnet2Block:
+    Type: String
+    Default: 192.168.40.0/24
+    Description: (DO NOT CHANGE)
+
+
+Resources:
+# VPC
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcBlock
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-VPC
+
+# PublicSubnets
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref AvailabilityZone1
+      CidrBlock: !Ref PublicSubnet1Block
+      VpcId: !Ref MyVPC
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PublicSubnet1
+        - Key: kubernetes.io/role/elb
+          Value: 1
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref AvailabilityZone2
+      CidrBlock: !Ref PublicSubnet2Block
+      VpcId: !Ref MyVPC
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PublicSubnet2
+        - Key: kubernetes.io/role/elb
+          Value: 1
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref MyVPC
+
+  PublicSubnetRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PublicSubnetRouteTable
+
+  PublicSubnetRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicSubnetRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicSubnetRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicSubnetRouteTable
+
+# PrivateSubnets
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref AvailabilityZone1
+      CidrBlock: !Ref PrivateSubnet1Block
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PrivateSubnet1
+        - Key: kubernetes.io/role/internal-elb
+          Value: 1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref AvailabilityZone2
+      CidrBlock: !Ref PrivateSubnet2Block
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PrivateSubnet2
+        - Key: kubernetes.io/role/internal-elb
+          Value: 1
+
+  PrivateSubnetRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PrivateSubnetRouteTable
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateSubnetRouteTable
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateSubnetRouteTable
+
+# Security Group
+  EC2SG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${AWS::StackName}-EC2-SG
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-EC2-SG
+      SecurityGroupIngress:
+      - IpProtocol: '-1'
+        #FromPort: '22'
+        #ToPort: '22'
+        CidrIp: !Ref SgIngressCidr
+      - IpProtocol: '-1'
+        CidrIp: !Ref VpcBlock
+      - IpProtocol: '-1'
+        CidrIp: 172.16.0.0/16
+      - IpProtocol: '-1'
+        CidrIp: 10.200.10.0/24
+
+  EFSSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref MyVPC
+      GroupDescription: !Sub ${AWS::StackName}-EFS-SG
+      Tags:
+      - Key : Name
+        Value : !Sub ${AWS::StackName}-EFS-SG
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '2049'
+        ToPort: '2049'
+        SourceSecurityGroupId: !Ref EC2SG
+
+# EFS
+  ElasticFileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      FileSystemTags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-EFS
+  ElasticFileSystemMountTarget0:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref ElasticFileSystem
+      SecurityGroups:
+      - !Ref EFSSG
+      SubnetId: !Ref PublicSubnet1
+  ElasticFileSystemMountTarget1:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref ElasticFileSystem
+      SecurityGroups:
+      - !Ref EFSSG
+      SubnetId: !Ref PublicSubnet2
+
+# Master Node - MEC2 (Master EC2)
+  Instance1ENI1:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      Description: !Sub ${AWS::StackName}-Instance1ENI1
+      GroupSet:
+      - !Ref EC2SG
+      PrivateIpAddress: 192.168.10.10
+      SourceDestCheck: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Instance1ENI1
+
+  MEC2:
+    Type: AWS::EC2::Instance
+    DependsOn: ElasticFileSystem
+    Properties:
+      InstanceType: !Ref MasterNodeInstanceType
+      ImageId: !Ref LatestAmiId
+      KeyName: !Ref KeyName
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Master
+      NetworkInterfaces:
+        - NetworkInterfaceId: !Ref Instance1ENI1
+          DeviceIndex: '0'
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1 #xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: !Ref Ec2EbsVolumeSize
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            hostnamectl --static set-hostname k8s-m
+
+            # K8S Version
+            export KUBERNETES_VERSION=${KubernetesVersion}
+            echo "Kubernetes Version : $KUBERNETES_VERSION" > /root/kubernetes-version.txt
+
+            # Initial Config
+            curl -fsSL https://raw.githubusercontent.com/gasida/DOIK/main/vanilla/init.sh | sh
+            
+            # Config Master
+            curl -fsSL https://raw.githubusercontent.com/gasida/DOIK/main/vanilla/master.sh | sh
+
+            # EFS
+            export EFS_FILE_SYSTEM_ID=${ElasticFileSystem}
+            echo "$EFS_FILE_SYSTEM_ID.efs.ap-northeast-2.amazonaws.com" > /root/efs.txt
+            mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport $EFS_FILE_SYSTEM_ID.efs.ap-northeast-2.amazonaws.com:/ /nfs4-share
+
+# Worker Node - W1E2 (Worker1 EC2)
+  Instance2ENI1:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      Description: !Sub ${AWS::StackName}-Instance2ENI1
+      GroupSet:
+      - !Ref EC2SG
+      PrivateIpAddress: 192.168.10.101
+      SourceDestCheck: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Instance2ENI1
+
+  W1EC2:
+    Type: AWS::EC2::Instance
+    DependsOn: MEC2
+    Properties:
+      InstanceType: !Ref WorkerNodeInstanceType
+      ImageId: !Ref LatestAmiId
+      KeyName: !Ref KeyName
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Worker1
+      NetworkInterfaces:
+        - NetworkInterfaceId: !Ref Instance2ENI1
+          DeviceIndex: '0'
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1 #xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: !Ref Ec2EbsVolumeSize
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            hostnamectl --static set-hostname k8s-w1
+
+            # Initial Config
+            export KUBERNETES_VERSION=${KubernetesVersion}
+            curl -fsSL https://raw.githubusercontent.com/gasida/DOIK/main/vanilla/init.sh | sh
+
+            # Config Worker
+            curl -fsSL https://raw.githubusercontent.com/gasida/DOIK/main/vanilla/worker.sh | sh
+
+# Worker Node - W2EC2 (Worker2 EC2)
+  Instance3ENI1:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      Description: !Sub ${AWS::StackName}-Instance3ENI1
+      GroupSet:
+      - !Ref EC2SG
+      PrivateIpAddress: 192.168.10.102
+      SourceDestCheck: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Instance3ENI1
+
+  W2EC2:
+    Type: AWS::EC2::Instance
+    DependsOn: MEC2
+    Properties:
+      InstanceType: !Ref WorkerNodeInstanceType
+      ImageId: !Ref LatestAmiId
+      KeyName: !Ref KeyName
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Worker2
+      NetworkInterfaces:
+        - NetworkInterfaceId: !Ref Instance3ENI1
+          DeviceIndex: '0'
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1 #xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: !Ref Ec2EbsVolumeSize
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            hostnamectl --static set-hostname k8s-w2
+
+            # Initial Config
+            export KUBERNETES_VERSION=${KubernetesVersion}
+            curl -fsSL https://raw.githubusercontent.com/gasida/DOIK/main/vanilla/init.sh | sh
+
+            # Config Worker
+            curl -fsSL https://raw.githubusercontent.com/gasida/DOIK/main/vanilla/worker.sh | sh
+
+# Worker Node - W3EC2 (Worker3 EC2)
+  Instance4ENI1:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      Description: !Sub ${AWS::StackName}-Instance4ENI1
+      GroupSet:
+      - !Ref EC2SG
+      PrivateIpAddress: 192.168.20.103
+      SourceDestCheck: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Instance4ENI1
+
+  W3EC2:
+    Type: AWS::EC2::Instance
+    DependsOn: W1EC2
+    Properties:
+      InstanceType: !Ref WorkerNodeInstanceType
+      ImageId: !Ref LatestAmiId
+      KeyName: !Ref KeyName
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-Worker3
+      NetworkInterfaces:
+        - NetworkInterfaceId: !Ref Instance4ENI1
+          DeviceIndex: '0'
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1 #xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: !Ref Ec2EbsVolumeSize
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            hostnamectl --static set-hostname k8s-w3
+
+            # Initial Config
+            export KUBERNETES_VERSION=${KubernetesVersion}
+            curl -fsSL https://raw.githubusercontent.com/gasida/DOIK/main/vanilla/init.sh | sh
+
+            # Config Worker
+            curl -fsSL https://raw.githubusercontent.com/gasida/DOIK/main/vanilla/worker.sh | sh
+
+
+Outputs:
+  MasterNodeIP:
+    Value: !GetAtt MEC2.PublicIp
+  WorkerNode1IP:
+    Value: !GetAtt W1EC2.PublicIp
+  WorkerNode2IP:
+    Value: !GetAtt W2EC2.PublicIp
+  WorkerNode3IP:
+    Value: !GetAtt W3EC2.PublicIp
+  EfsFileSystemID:
+    Value: !Ref ElasticFileSystem
