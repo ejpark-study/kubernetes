@@ -1,8 +1,8 @@
 # Database Operator In Kubernetes study (DOIK) 스터디 중간 과제
 
-가시다님의 최고의 스터디인 Kubernetes Advanced Networking Study (KANS)에 이어서 Database Operator 를 사용하는 방법에 관한 스터디를 참여하고 있다. 내가 궁금한 부분은 맨 마지막주에 있는 Elasticsearch Operator 인데, 듣다가 보니 도움이 많이 되었다. 특히 나같은 경우에는 데이터베이스와 같이 데이터를 저장해야 하는 서비스 운영을 Kubernetes 에서 하기 무서운 면이 있어서 이때까지는 docker 로 설치하고 개발중인 어플리케이션과 연동하였다. 스터디에서 장애를 발생하고 복구하는 것을 보니 다음 프로젝트에는 Operator 를 사용해 보려고 한다. 
+가시다님 최고의 스터디인 Kubernetes Advanced Networking Study (KANS)에 이어서 Database Operator 를 사용하는 방법에 관한 스터디에 참여하고 있다. 내가 궁금한 부분은 맨 마지막주에 있는 Elasticsearch Operator 인데, 듣다가 보니 도움이 많이 되었다. 특히 나 같은 경우에는 데이터를 저장해야 하는 서비스를 Kubernetes 에서 하기엔 쫄보라서 지금까지는 docker 로 Elasticsearch, Mysql, MongoDB 를 운영하였다. 이번 스터디에서 장애를 발생하고 복구하는 것을 보니 다음 프로젝트에는 Operator 를 사용해 보려고 한다. 
 
-듣고 싶은 Elasticsearch Operator 를 듣기 위해서는 중간과제를 제출해야 하는데, 최대한 업무와 관련있는 주제를 찾다가 오늘에서야 주제를 잡고 이렇게 작성한다. 내부에서는 MLOps Pipeline 개발에 Minio와 RebbitMQ 사용을 고려 중이라 이번 중간 과제 주제로 Minio 를 기존 방식인 docker 방식에서 Minio Operator 를 사용하는 방식으로 정리하고자 한다. 문제는 저번주 부터 잠시 테스트 해봤는데, OpenShift 에서는 Minio 에서 공식 지원하는 Helm Operator 방식이 설치되지 않아 중간 과제 작성이 늦어졌다. 
+듣고 싶은 Elasticsearch Operator 를 듣기 위해서는 중간과제를 제출해야 하는데, 최대한 업무와 관련있는 주제를 찾다가 오늘에서야 주제를 잡고 이렇게 작성한다. 내부에서는 MLOps Pipeline 개발에 Minio와 RebbitMQ 사용하고 있어서, 이번 중간 과제 주제로 Minio 를 기존 방식인 docker 방식에서 Minio Operator 를 사용하는 방식으로 변환하는 과정을 정리하고자 한다. 문제는 저번주 부터 테스트해보고 있는데, OpenShift 에서는 Minio 에서 공식 지원하는 Helm Operator 방식이 설치되지 않아 중간 과제 작성이 늦어졌다.
 
 # Prepare AWS Stack
 
