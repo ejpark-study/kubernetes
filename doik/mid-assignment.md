@@ -227,6 +227,101 @@ spec:
     app: minio
 ```
 
+## [번외] Kubernetes yaml 을 Helm 으로 변경
+
+### skel 생성
+
+```shell
+mkdir -p helm/templates
+touch helm/values.yaml 
+
+cat <<EOF > helm/Chart.yaml
+apiVersion: v1
+name: MinIO my helm chart
+description: A Helm chart for MinIO
+type: application
+version: 1.0.0
+appVersion: 1.0.0
+EOF
+```
+
+### kubernetes yaml 파일 분리 
+
+기존 kubernetes yaml 파일을 리소스별로 분리해서 helm/templates 폴더에 저장한다.
+
+```shell 
+cat <<EOF > helm/templates/Secret.yaml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio
+  labels:
+    app: minio
+type: Opaque
+data:
+  rootUser: "bWluaW8="
+  rootPassword: "bWluaW8xMjM0"
+EOF
+```
+
+### template 랜더링
+
+helm template 명령으로 랜더링 하면서 templates 안의 파일을 변수화 한다.
+
+```shell
+❯ helm template dev .
+```
+
+### values.yaml 변수화 및 반복문
+
+예를 들어 Secret 의 root 패스워드를 변수화하는 경우 values.yaml 에 아래와 같이 설정한다.
+
+```yaml
+secret:
+  rootUser: "bWluaW8="
+  rootPassword: "bWluaW8xMjM0"
+```
+
+templates/Secret.yaml 파일에서 변수부분을 아래와 같이 수정한다.
+
+```yaml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio
+  labels:
+    app: minio
+type: Opaque
+data:
+  rootUser: {{ $.Values.secret.rootUser }}
+  rootPassword: {{ $.Values.secret.rootUser }}
+```
+
+json 으로 랜더링 할수도 있다.
+
+```yaml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio
+  labels:
+    app: minio
+type: Opaque
+data:
+  {{- toYaml $.Values.secret | nindent 2 }}
+```
+
+### 디버깅
+
+에러가 나는 경우 --debug 옵션으로 에러 위치를 확인하면서 변수화 한다.
+
+```shell
+❯ helm template dev . --debug
+```
+
 # MinIO Helm
 
 MinIO 에서는 아래와 같이 Operator 와 Helm Chart 방식이 존재한다.
