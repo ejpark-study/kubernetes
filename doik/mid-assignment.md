@@ -104,7 +104,7 @@ bWluaW8xMjM0
 
 ## MinIO 배포 스크립트
 
-MinIO 는 client 에서 접근하는 9000번 포트와 웹 콘솔화면에 접근하는 9001번 포트가 있다. 여기서는 웹 콘솔 포트만 열었다. 
+MinIO 는 client 에서 접근하는 9000번 포트와 웹 콘솔화면에 접근하는 9001번 포트가 있다. 여기서는 웹 콘솔 포트만 열었다. 아래 yaml 파일은 공식 helm chart 에서 template 으로 뽑아 냈다. 
 
 ```shell
 cat <<EOF | kubectl apply -f -
@@ -231,6 +231,8 @@ spec:
 
 ### skel 생성
 
+helm 명령어로 생성할수 있는데 ServiceAccount 와 같은 부수적인 것도 같이 생성되서 간단하게 테스트할 때는 이 방법을 사용한다.
+
 ```shell
 mkdir -p helm/templates
 touch helm/values.yaml 
@@ -330,8 +332,16 @@ MinIO 에서는 아래와 같이 Operator 와 Helm Chart 방식이 존재한다.
 
 * [Deploy MinIO on Kubernetes](https://docs.min.io/docs/deploy-minio-on-kubernetes.html)
 
+helm chart 를 그데로 사용하기 위해 NodePort 32900 으로 배포했다.
 
-TODO
+```shell 
+helm repo add minio https://charts.min.io/
+
+helm install \
+  --namespace minio \
+  --set rootUser=minio,rootPassword=minio123,mode=standalone,replicas=1,persistence.size=100Gi,service.type=NodePort,service.nodePort=32900 \
+  --generate-name minio/minio
+```
 
 # MinIO Operator
 
