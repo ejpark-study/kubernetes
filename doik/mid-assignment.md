@@ -12,6 +12,26 @@
 
 * [(공개) 바닐라 쿠베네티스 실습 환경 배포 가이드](https://gasidaseo.notion.site/db0869d191ec4e4d90b1c9bb722a7175)
 
+## aws secret access key 발급
+
+* [getting-started_create-admin-group](https://docs.aws.amazon.com/IAM/latest/UserGuide/getting-started_create-admin-group.html)
+
+* [IAM console](https://console.aws.amazon.com/iam/) 에서 생성: Identity and Access Management(IAM)
+
+## aws cli 설치 및 설정
+
+* [cliv2-linux-install](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html#cliv2-linux-install)
+
+```shell
+msiexec.exe /i https://awscli.amazonaws.com/AWSCLIV2.msi
+
+aws configure
+AWS Access Key ID [None]: ***
+AWS Secret Access Key [None]: ***
+Default region name [None]: ap-northeast-2
+Default output format [None]: text
+```
+
 ## aws stack 생성
 
 ipinfo.io/ip 로 현재 접속중인 PC 의 public ip 로만 접속할 수 있도록 aws stack 을 생성한다. [start-stack](start-stack.ps1) 스터디 실습 환경은 myk8s 인데 doik 로 변경하였다.
