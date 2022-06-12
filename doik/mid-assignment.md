@@ -352,7 +352,7 @@ MinIO 에서는 아래와 같이 Operator 와 Helm Chart 방식이 존재한다.
 
 * [Deploy MinIO on Kubernetes](https://docs.min.io/docs/deploy-minio-on-kubernetes.html)
 
-helm chart 를 그데로 사용하기 위해 NodePort 32900 으로 배포했다.
+helm chart 를 그대로 사용하기 위해 NodePort 32900 으로 배포했다.
 
 ```shell 
 helm repo add minio https://charts.min.io/
@@ -370,15 +370,173 @@ helm install \
 * [MinIO Operator](https://github.com/minio/operator/blob/master/README.md)
 
 ```shell
-kubectl krew update
-kubectl krew install minio
+❯ kubectl krew update
 
-kubectl minio init
+❯ kubectl krew install minio
+
+Updated the local copy of plugin index.
+Installing plugin: minio
+Installed plugin: minio
+\
+ | Use this plugin:
+ | 	kubectl minio
+ | Documentation:
+ | 	https://github.com/minio/operator/tree/master/kubectl-minio
+ | Caveats:
+ | \
+ |  | * For resources that are not in default namespace, currently you must
+ |  |   specify -n/--namespace explicitly (the current namespace setting is not
+ |  |   yet used).
+ | /
+/
+WARNING: You installed plugin "minio" from the krew-index plugin repository.
+   These plugins are not audited for security by the Krew maintainers.
+   Run them at your own risk.
+
+❯ kubectl minio init
+namespace/minio-operator created
+serviceaccount/minio-operator created
+clusterrole.rbac.authorization.k8s.io/minio-operator-role created
+clusterrolebinding.rbac.authorization.k8s.io/minio-operator-binding created
+customresourcedefinition.apiextensions.k8s.io/tenants.minio.min.io created
+service/operator created
+deployment.apps/minio-operator created
+serviceaccount/console-sa created
+secret/console-sa-secret created
+clusterrole.rbac.authorization.k8s.io/console-sa-role created
+clusterrolebinding.rbac.authorization.k8s.io/console-sa-binding created
+configmap/console-env created
+service/console created
+deployment.apps/console created
+-----------------
+
+To open Operator UI, start a port forward using this command:
+
+kubectl minio proxy -n minio-operator 
+
+-----------------
+
 ```
 
-# MinIO Operator based Helm 
+아래와 같이 minio-operator 라는 namespace 가 생성된다. console (web 관리화면) 과 두개의 operator 가 생성된다.
 
-TODO
+![](2022-06-12-08-56-32.png)
+
+```shell
+❯ kubectl minio proxy -n minio-operator 
+Starting port forward of the Console UI.
+
+To connect open a browser and go to http://localhost:9090
+
+Current JWT to login: eyJhbGciOiJSUzI1NiIsImtpZCI6Ik5nWnVTNWpN(...)
+
+Forwarding from 0.0.0.0:9090 -> 9090
+Handling connection for 9090
+```
+
+정상적으로 배포가 완료 되면 9090 포트로 minio operator console ui 를 접속할수 있다.
+
+![](2022-06-12-09-00-35.png)
+
+화면에 출력되는 Current JWT 토큰으로 로그인할 수 있다.
+
+![](2022-06-12-09-03-31.png)
+
+## issue: "metrics.k8s.io/v1beta1: the server is currently unable to handle the request"
+
+난 이전 스터디에서 사용하던 Kubernetes Advanced Networking Study (KANS)의 실습환경으로 실행해 보니 아래와 같이 Pod 에서 "metrics.k8s.io/v1beta1: the server is currently unable to handle the request" 라는 Error 가 났다.
+
+```shell
+❯ kubectl minio proxy -n minio-operator 
+Starting port forward of the Console UI.
+
+To connect open a browser and go to http://localhost:9090
+
+Current JWT to login: eyJhbGciOiJSUzI1NiIsImtpZCI6Ik5nWnVTNWpN(...)
+
+error: unable to forward port because pod is not running. Current status=Pending
+2022/06/11 10:54:13 proxy.go:157: cmd.Run() failed with exit status 1
+
+❯ kubectl get pods
+NAME                              READY   STATUS    RESTARTS        AGE
+console-676b864546-vg8fp          1/1     Running   0               4m42s
+minio-operator-745f4d5dd9-bcbv9   0/1     Error     4 (61s ago)     4m42s
+minio-operator-745f4d5dd9-nsmzj   1/1     Running   5 (2m49s ago)   4m42s
+
+❯ kubectl logs pods/minio-operator-745f4d5dd9-bcbv9
+I0611 06:13:45.111886       1 main.go:70] Starting MinIO Operator
+I0611 06:13:45.379452       1 main.go:150] caBundle on CRD updated
+I0611 06:13:45.379848       1 main-controller.go:239] Setting up event handlers
+I0611 06:13:45.379997       1 leaderelection.go:243] attempting to acquire leader lease minio-operator/minio-operator-lock...
+I0611 06:13:45.392242       1 leaderelection.go:253] successfully acquired lease minio-operator/minio-operator-lock
+I0611 06:13:45.392411       1 main-controller.go:465] minio-operator-745f4d5dd9-bcbv9: I've become the leader
+I0611 06:13:45.392637       1 main-controller.go:377] Waiting for API to start
+I0611 06:13:45.392660       1 main-controller.go:369] Starting HTTP Upgrade Tenant Image server
+panic: unable to retrieve the complete list of server APIs: metrics.k8s.io/v1beta1: the server is currently unable to handle the request
+
+goroutine 122 [running]:
+github.com/minio/operator/pkg/controller/cluster/certificates.GetCertificatesAPIVersion.func1()
+        github.com/minio/operator/pkg/controller/cluster/certificates/csr.go:100 +0x1e5
+sync.(*Once).doSlow(0x0, 0x0)
+        sync/once.go:68 +0xd2
+sync.(*Once).Do(...)
+        sync/once.go:59
+github.com/minio/operator/pkg/controller/cluster/certificates.GetCertificatesAPIVersion({0x1b46930, 0xc000524420})
+        github.com/minio/operator/pkg/controller/cluster/certificates/csr.go:89 +0x5e
+github.com/minio/operator/pkg/controller/cluster.(*Controller).Start.func1.1()
+        github.com/minio/operator/pkg/controller/cluster/main-controller.go:345 +0x4b
+created by github.com/minio/operator/pkg/controller/cluster.(*Controller).Start.func1
+        github.com/minio/operator/pkg/controller/cluster/main-controller.go:343 +0xc5
+```
+
+* 관련 이슈: [minio-operator CrashLoopBackOff after kubectl minio init #1114](https://github.com/minio/operator/issues/1114)
+
+몇일 찾다가 이번 스터디 배포 환경의 [metrics-server.yaml](https://raw.githubusercontent.com/gasida/DOIK/main/1/metrics-server.yaml) 과 내가 [배포한 파일](https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml)을 비교해 보니 "hostNetwork: true" 옵션이 추가되었다는 것을 알았다. 
+
+![](2022-06-12-09-18-18.png)
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      containers:
+      - args:
+        - --kubelet-insecure-tls
+      (...)
+      nodeSelector:
+        kubernetes.io/hostname: k8s-m
+      tolerations:
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/master
+          operator: Exists
+      hostNetwork: true
+```
+
+가시다님 metrics-server.yaml 설정에서 nodeSelector 를 제외한 나머지 부분을 추가해서 재배포 했더니 잘 실행되었다. 이 이슈는 rancher local-path 도 동일하게 영향을 줬다.
+
+* 관련 이슈: [메트릭 서버(Metric Server) 설치에 관한 오류들…](https://linux.systemv.pe.kr/메트릭-서버metric-server-설치에-관한-오류들/)
+
+```shell
+❯ kubectl minio proxy -n minio-operator
+Starting port forward of the Console UI.
+
+To connect open a browser and go to http://localhost:9090
+
+Current JWT to login: eyJhbGciOiJSUzI1NiIsImtp(...)
+
+Forwarding from 0.0.0.0:9090 -> 9090
+```
+
+# local-path operator
+
+* [rancher local-path operator](https://github.com/rancher/local-path-provisioner)
+
+```shell
+curl -O https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.22/deploy/local-path-storage.yaml
+kubectl apply -f local-path-storage.yaml
+```
 
 # RebbitMQ
 
