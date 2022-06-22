@@ -2,7 +2,7 @@
 
 이전 직장에서 크롤링 결과를 Elasticsearch 에 저장하고 크롤링 상태를 Kibana 에서 조회했다. 물리서버 3대에 docker 로 master, ingest, data 구분없이 실행해서 사용했다. 앞에 reverse proxy로 부하 분산정도 세팅해서 무리없이 5년이상 운영하였다. 이번에 Kubernetes Database Operator 한다고 했을때 내심 Elasticsearch Operator 가 가장 궁금했었다. 어떻게 장애 테스트하고, 어떻게 복구되는지가 사실 궁금했었다. 서비스에 사용하고 있어서 버전 업그레이드도 5년 동안 2번 해본게 다라서 내심 궁금했었다. 생각해 보면 물리서버에서 빅데이터가 저장된 서버를 구축하는 것과 쿠버네티스에서 시스템을 구성하는 것은 다를 것 같다. 이전에는 openstack 으로 VM 을 생성해서 사용했었는데, 이제는 openshift 로 이 방식을 더 이상 사용할 수 없다. 
 
-사실 몇번 쿠버네티스에 올리려고 했었는데 ceph 에 올렸다가 몇번 깨지는 것을 보고 완전히 포기했었다. 이번 스터디에서 배운 장애를 발생하는 것과 복구과정을 확인하는 방법에 중심으로 해보고자 한다. 
+사실 몇번 쿠버네티스에 올리려고 했었는데 ceph 에 올렸다가 몇번 깨지는 것을 보고 완전히 포기했었다. 이번 스터디에서 배운 장애를 발생하는 것과 복구과정을 확인하는 방법을 중심으로 해보고자 한다. 
 
 # docker 방식의 Elasticsearch 
 
@@ -247,4 +247,264 @@ cat nodes | grep kibana | xargs -I{} scp ${BATCH} {}:
 ```
 
 6) haproxy reverse proxy & loadbalancer
+
+```shell
+❯ cat haproxy.cfg
+global
+    log 127.0.0.1 local2
+
+    maxconn 5000
+    tune.ssl.default-dh-param 2048
+
+    spread-checks 5
+    max-spread-checks 15000
+    tune.ssl.default-dh-param 2048
+
+    ssl-default-bind-ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:DHE-RSA-AES128-SHA256:DHE-RSA-AES256-SHA256:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:!aNULL:!MD5:!DSS
+    ssl-default-bind-options no-sslv3 no-tlsv10 no-tls-tickets
+    ssl-default-server-ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:DHE-RSA-AES128-SHA256:DHE-RSA-AES256-SHA256:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:!aNULL:!MD5:!DSS
+    ssl-default-server-options no-sslv3 no-tlsv10 no-tls-tickets
+
+defaults
+    log     global
+    mode    tcp
+
+    retries                   3
+    backlog               10000
+    maxconn               10000
+
+    timeout connect       6000s
+    timeout client        6000s
+    timeout server        6000s
+    timeout tunnel        6000s
+    timeout http-keep-alive 60s
+    timeout http-request    30s
+    timeout queue         6000s
+    timeout tarpit        6000s
+
+    option            dontlognull
+    option            http-server-close
+    option            redispatch
+
+listen stats
+    bind *:9000
+    mode http
+    stats enable
+    stats hide-version
+    stats realm HAproxy-Statistics
+    stats uri /stats
+    monitor-uri /_health_check
+
+# elasticsearch
+frontend elasticsearch
+    bind *:9200
+    mode tcp
+    option tcplog
+    default_backend elasticsearch
+
+backend elasticsearch
+    mode tcp
+    option tcp-check
+    balance roundrobin
+    server elk-n1 elk-n1:9200 check inter 30s
+    server elk-n2 elk-n2:9200 check inter 30s
+    server elk-n3 elk-n3:9200 check inter 30s
+
+# kibana
+frontend kibana
+    bind *:5601
+    mode tcp
+    option tcplog
+    default_backend kibana
+
+backend kibana
+    mode tcp
+    option tcp-check
+    server kibana kibana:5601 check inter 30s
+
+```
+
+여기서, loadbalancer 설정은 이부분이다. 
+
+```yaml
+backend elasticsearch
+    mode tcp
+    option tcp-check
+    balance roundrobin
+    server elk-n1 elk-n1:9200 check inter 30s
+    server elk-n2 elk-n2:9200 check inter 30s
+    server elk-n3 elk-n3:9200 check inter 30s
+```
+
+loadbalancer dockrefile 로 빌드해서 사용할 수 있다.
+
+```shell
+❯ cat Dockerfile
+FROM haproxy:latest
+
+ADD haproxy.cfg /usr/local/etc/haproxy/haproxy.cfg
+```
+
+haproxy.cfg 를 설정한 다음에 haproxy docker 로 실행한다.
+
+```shell
+docker run \
+    -d --restart=unless-stopped \
+    --name proxy \
+    --network=host \
+    -v haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg \
+    haproxy:latest
+```
+
+# Elasticsearch Operator
+
+* [elastic-cloud-eck](https://operatorhub.io/operator/elastic-cloud-eck)
+
+* Capability Level
+![](https://operatorhub.io/static/images/level-3.svg)
+
+```text
+Elasticsearch (ECK) Operator
+
+Elastic Cloud on Kubernetes (ECK) is the official operator by Elastic for automating the deployment, provisioning, management, and orchestration of Elasticsearch, Kibana, APM Server, Beats, Enterprise Search, Elastic Agent and Elastic Maps Server on Kubernetes.
+
+Current features:
+
+    Elasticsearch, Kibana, APM Server, Enterprise Search, Beats, Elastic Agent and Elastic Maps Server deployments
+    TLS Certificates management
+    Safe Elasticsearch cluster configuration and topology changes
+    Persistent volumes usage
+    Custom node configuration and attributes
+    Secure settings keystore updates
+
+Supported versions:
+
+    Kubernetes 1.19-1.23
+    OpenShift 4.6-4.10
+    Google Kubernetes Engine (GKE), Azure Kubernetes Service (AKS), and Amazon Elastic Kubernetes Service (EKS)
+    Elasticsearch, Kibana, APM Server: 6.8+, 7.1+, 8+
+    Enterprise Search: 7.7+, 8+
+    Beats: 7.0+, 8+
+    Elastic Agent: 7.10+, 8+
+    Elastic Maps Server: 7.11+, 8+
+```
+Supported versions 은 operatorhub 와 github 가 좀 다르다. 
+
+* [cloud-on-k8s](https://github.com/elastic/cloud-on-k8s)
+
+```text
+Supported versions:
+
+    Kubernetes 1.20-1.24
+    OpenShift 4.6-4.10
+    Elasticsearch, Kibana, APM Server: 6.8+, 7.1+, 8+
+    Enterprise Search: 7.7+, 8+
+    Beats: 7.0+, 8+
+    Elastic Agent: 7.10+ (standalone), 7.14+, 8+ (Fleet)
+    Elastic Maps Server: 7.11+, 8+
+
+```
+
+## Quickstart
+
+* [Quickstart](https://www.elastic.co/guide/en/cloud-on-k8s/current/k8s-quickstart.html)
+
+* install operator
+
+```shell
+# 1) Install custom resource definitions:
+kubectl create -f https://download.elastic.co/downloads/eck/2.2.0/crds.yaml
+
+# 2) Install the operator with its RBAC rules:
+kubectl apply -f https://download.elastic.co/downloads/eck/2.2.0/operator.yaml
+
+# 3) Monitor the operator logs:
+kubectl -n elastic-system logs -f statefulset.apps/elastic-operator
+```
+
+* Elasticsearch
+
+```shell
+cat <<EOF | kubectl apply -f -
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: quickstart
+spec:
+  version: 8.2.3
+  nodeSets:
+  - name: default
+    count: 1
+    config:
+      node.store.allow_mmap: false
+EOF
+
+kubectl get elasticsearch
+
+kubectl get pods --selector='elasticsearch.k8s.elastic.co/cluster-name=quickstart'
+
+kubectl logs -f quickstart-es-default-0
+
+# get service information
+kubectl get service quickstart-es-http
+
+# Get the credentials.
+# A default user named elastic is automatically created with the password stored in a Kubernetes secret:
+
+PASSWORD=$(kubectl get secret quickstart-es-elastic-user -o go-template='{{.data.elastic | base64decode}}')
+
+# Request the Elasticsearch endpoint.
+
+# From inside the Kubernetes cluster:
+
+curl -u "elastic:$PASSWORD" -k "https://quickstart-es-http:9200"
+
+# From your local workstation, use the following command in a separate terminal:
+
+kubectl port-forward service/quickstart-es-http 9200
+
+# Then request localhost:
+
+curl -u "elastic:$PASSWORD" -k "https://localhost:9200"
+```
+
+* Kibana
+
+```shell
+# Specify a Kibana instance and associate it with your Elasticsearch cluster:
+
+cat <<EOF | kubectl apply -f -
+apiVersion: kibana.k8s.elastic.co/v1
+kind: Kibana
+metadata:
+  name: quickstart
+spec:
+  version: 8.2.3
+  count: 1
+  elasticsearchRef:
+    name: quickstart
+EOF
+
+# Monitor Kibana health and creation progress.
+# Similar to Elasticsearch, you can retrieve details about Kibana instances:
+
+kubectl get kibana
+
+# And the associated Pods:
+
+kubectl get pod --selector='kibana.k8s.elastic.co/name=quickstart'
+
+# Access Kibana.
+# A ClusterIP Service is automatically created for Kibana:
+
+kubectl get service quickstart-kb-http
+
+# Use kubectl port-forward to access Kibana from your local workstation:
+
+kubectl port-forward service/quickstart-kb-http 5601
+
+# Login as the elastic user. The password can be obtained with the following command:
+
+kubectl get secret quickstart-es-elastic-user -o=jsonpath='{.data.elastic}' | base64 --decode; echo
+```
 
