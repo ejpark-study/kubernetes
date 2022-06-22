@@ -4,7 +4,7 @@
 
 사실 몇번 쿠버네티스에 올리려고 했었는데 ceph 에 올렸다가 몇번 깨지는 것을 보고 완전히 포기했었다. 이번 스터디에서 배운 장애를 발생하는 것과 복구과정을 확인하는 방법을 중심으로 해보고자 한다. 
 
-# docker 방식의 Elasticsearch 
+# Docker Style
 
 
 ## [docker] Elasticsearch + Kibana
@@ -356,6 +356,10 @@ docker run \
     haproxy:latest
 ```
 
+# Helm Style
+
+TODO
+
 # Elasticsearch Operator
 
 * [elastic-cloud-eck](https://operatorhub.io/operator/elastic-cloud-eck)
@@ -508,3 +512,8 @@ kubectl port-forward service/quickstart-kb-http 5601
 kubectl get secret quickstart-es-elastic-user -o=jsonpath='{.data.elastic}' | base64 --decode; echo
 ```
 
+# Insert Data
+
+# Self Healing
+
+# Conclusion
