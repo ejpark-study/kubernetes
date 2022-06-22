@@ -352,15 +352,25 @@ MinIO 에서는 아래와 같이 Operator 와 Helm Chart 방식이 존재한다.
 
 * [Deploy MinIO on Kubernetes](https://docs.min.io/docs/deploy-minio-on-kubernetes.html)
 
-helm chart 를 그대로 사용하기 위해 NodePort 32900 으로 배포했다.
+<!-- helm chart 를 그대로 사용하기 위해 NodePort 32700 으로 배포했다. -->
 
 ```shell 
 helm repo add minio https://charts.min.io/
 
 helm install \
-  --namespace minio \
-  --set rootUser=minio,rootPassword=minio123,mode=standalone,replicas=1,persistence.size=100Gi,service.type=NodePort,service.nodePort=32900 \
-  --generate-name minio/minio
+  --generate-name \
+  --set rootUser=minio,rootPassword=minio123 \
+  --set mode=standalone,replicas=1 \
+  --set persistence.size=10Gi \
+  --set resources.requests.memory=5Gi \
+  --set ingress.enabled=true \
+  minio/minio
+```
+
+ingress.enabled=true 할 경우 에러남
+
+```text
+Error: INSTALLATION FAILED: Internal error occurred: failed calling webhook "validate.nginx.ingress.kubernetes.io": failed to call webhook: Post "https://ingress-nginx-controller-admission.ingress-nginx.svc:443/networking/v1/ingresses?timeout=10s": context deadline exceeded
 ```
 
 # MinIO Operator
@@ -534,15 +544,9 @@ Forwarding from 0.0.0.0:9090 -> 9090
 * [rancher local-path operator](https://github.com/rancher/local-path-provisioner)
 
 ```shell
-curl -O https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.22/deploy/local-path-storage.yaml
+curl -O "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.22/deploy/local-path-storage.yaml"
 kubectl apply -f local-path-storage.yaml
 ```
-
-# RebbitMQ
-
-* [rabbitmq operator](https://www.rabbitmq.com/kubernetes/operator/operator-overview.html)
-
-TODO
 
 # issue 
 
