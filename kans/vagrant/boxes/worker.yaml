@@ -1,0 +1,23 @@
+---
+spec:
+  name: kans-worker
+  box:
+    name: kans/docker
+    url: file://C:\KANS/vagrant\boxes\docker.json
+  setup:
+    host_path: ../setup
+    guest_path: /usr/local/bin/setup
+  provider:
+    name: kans-worker
+    cpus: 4
+    memory: 4096
+  hostname: worker
+  disk_size: 45GB
+  provision:
+    - privileged: true
+      path: "kubernetes/kubernetes-core.sh"
+      args: ["1.23.3"]
+    - privileged: true
+      path: "core/clear-cache.sh"
+    - privileged: true
+      path: "core/compact-disk.sh"
