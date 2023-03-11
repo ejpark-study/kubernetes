@@ -285,18 +285,7 @@ Welcome to Ubuntu 20.04.5 LTS (GNU/Linux 5.15.0-1028-aws x86_64)
   Memory usage: 13%                IPv4 address for ens5: 172.30.88.121
   Swap usage:   0%                 IPv4 address for ens6: 172.30.95.243
 
-66 updates can be applied immediately.
-53 of these updates are standard security updates.
-To see these additional updates run: apt list --upgradable
-
-
-
-The programs included with the Ubuntu system are free software;
-the exact distribution terms for each program are described in the
-individual files in /usr/share/doc/*/copyright.
-
-Ubuntu comes with ABSOLUTELY NO WARRANTY, to the extent permitted by
-applicable law.
+(...)
 
 /usr/bin/xauth:  file /home/ubuntu/.Xauthority does not exist
 To run a command as administrator (user "root"), use "sudo <command>".
@@ -314,6 +303,79 @@ nvme0n1      259:0    0   128G  0 disk
 ├─nvme0n1p14 259:2    0     4M  0 part
 └─nvme0n1p15 259:3    0   106M  0 part /boot/efi
 ```
+
+# ExternalDNS
+
+![ExternalDNS](images/2023-03-08-18-52-11.png)
+
+출처: [A Self-hosted external DNS resolver for Kubernetes.](https://edgehog.blog/a-self-hosted-external-dns-resolver-for-kubernetes-111a27d6fc2c)
+
+* ExternalDNS Addon 설치: [ExternalDNS Addon](https://github.com/kubernetes-sigs/external-dns)
+
+```bash
+# 모니터링
+watch -d kubectl get pod -A
+
+# 정책 생성 -> 마스터/워커노드에 정책 연결
+curl -s -O https://s3.ap-northeast-2.amazonaws.com/cloudformation.cloudneta.net/AKOS/externaldns/externaldns-aws-r53-policy.json
+
+aws iam create-policy --policy-name AllowExternalDNSUpdates --policy-document file://externaldns-aws-r53-policy.json
+
+# ACCOUNT_ID 변수 지정
+export ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+
+# EC2 instance profiles 에 IAM Policy 추가(attach)
+aws iam attach-role-policy --policy-arn arn:aws:iam::$ACCOUNT_ID:policy/AllowExternalDNSUpdates --role-name masters.$KOPS_CLUSTER_NAME
+
+aws iam attach-role-policy --policy-arn arn:aws:iam::$ACCOUNT_ID:policy/AllowExternalDNSUpdates --role-name nodes.$KOPS_CLUSTER_NAME
+
+# 설치
+kops edit cluster
+--------------------------
+spec:
+  certManager:
+    enabled: true
+  externalDns:
+    provider: external-dns
+--------------------------
+
+# 업데이트 적용
+kops update cluster --yes && echo && sleep 3 && kops rolling-update cluster
+
+# externalDns 컨트롤러 파드 확인
+kubectl get pod -n kube-system -l k8s-app=external-dns
+NAME                            READY   STATUS    RESTARTS   AGE
+external-dns-66969c4497-wbs5p   1/1     Running   0          8m53s
+```
+
+## mario 서비스에 도메인 연결 실습: [도메인체크](https://www.whatsmydns.net/)
+
+```bash
+# CLB에 ExternanDNS 로 도메인 연결
+kubectl annotate service mario "external-dns.alpha.kubernetes.io/hostname=mario.$KOPS_CLUSTER_NAME"
+
+# 확인
+dig +short mario.$KOPS_CLUSTER_NAME
+kubectl logs -n kube-system -l k8s-app=external-dns
+
+# 웹 접속 주소 확인 및 접속
+echo -e "Maria Game URL = http://mario.$KOPS_CLUSTER_NAME"
+
+# 도메인 체크
+echo -e "My Domain Checker = https://www.whatsmydns.net/#A/mario.$KOPS_CLUSTER_NAME"
+```
+
+* AWS Route53 A 레코드 확인
+
+
+
+* 실습 완료 후 mario 게임 삭제
+
+```bash
+kubectl delete deploy,svc mario
+```
+
+[Amazon EKS Multi Cluster Upgrade with ExternalDNS](https://heuristicwave.github.io/EKS_Upgrade)
 
 # 실습 정리
 
